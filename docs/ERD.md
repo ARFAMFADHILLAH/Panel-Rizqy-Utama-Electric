@@ -4,6 +4,14 @@ Basis data `rizqyutamaelectric` dipakai **bersama** oleh storefront (`:3000`)
 dan panel admin (`:3001`). Skema ini sudah ada sebelum panel dibuat dan
 **tidak diubah** oleh panel: tidak ada tabel baru, tidak ada migrasi.
 
+> **Catatan (versi Supabase).** Storefront dan panel saat ini memakai **Supabase
+> (Postgres)**; skema resminya ada di `rizqyutamaelectric/supabase/schema.sql`
+> (`users`, `categories`, `products` dengan kolom boolean `is_admin`,
+> `featured`, `is_active`, dan `price`/`stock` bertipe `integer`). Diagram &
+> DDL di bawah ini adalah versi MySQL asli dan tetap berlaku untuk mode
+> cadangan. Perbedaan praktis bagi panel: `id` adalah `bigint identity`, dan
+> nilain boolean dikirim sebagai `true/false` (bukan `1/0`).
+
 Rincian kebutuhan produk ada di [PRD.md](./PRD.md).
 
 ---

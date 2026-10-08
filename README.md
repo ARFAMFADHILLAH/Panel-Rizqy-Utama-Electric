@@ -1,26 +1,28 @@
 # Panel Admin — Rizqy Utama Electric
 
 Panel administrasi untuk toko online **Rizqy Utama Electric**.Dibangun sebagai
-aplikasi Next.js **terpisah** yang memakai **database MySQL yang sama** dengan
-storefront, sehingga admin bisa mengelola katalog lewat web tanpa menyentuh SQL
-dan tanpa risiko merusak toko yang sedang melayani pelanggan.
+aplikasi Next.js **terpisah** yang memakai **database Supabase (Postgres) yang
+sama** dengan storefront, sehingga admin bisa mengelola katalog lewat web tanpa
+menyentuh SQL dan tanpa risiko merusak toko yang sedang melayani pelanggan.
 
 ```
 rizqyutamaelectric/              panel-rizqyutamaelectric/  ← repo ini
   storefront Next.js :3000          panel admin Next.js :3001
   (tidak diubah sama sekali)         (read + write)
             │                                  │
-            └────────────► MySQL ◄──────────────┘
-                  database: rizqyutamaelectric
+            └────────────► Supabase ◄───────────┘
+                 Postgres (satu connection string)
               products · categories · users
 ```
 
 - **Satu database, dua aplikasi** — tidak ada replikasi, tidak ada tabel baru,
-  tidak ada migrasi.
+  tidak ada migrasi. Skema ada di `rizqyutamaelectric/supabase/schema.sql`.
 - **Storefront tidak pernah disentuh** — panel hanya membaca dan menulis ke
   tabel yang sudah ada.
 - **Perubahan langsung terlihat** — produk baru, harga baru, atau status
   aktif/nonaktif langsung tampil di toko tanpa deploy.
+- **MySQL tersedia sebagai cadangan** — bila `SUPABASE_DB_URL` dikosongkan,
+  panel otomatis memakai MySQL (`MYSQL_*`) dengan SQL dan tabel yang sama.
 
 ## Dokumentasi
 
@@ -34,7 +36,7 @@ rizqyutamaelectric/              panel-rizqyutamaelectric/  ← repo ini
 
 - **Login/logout** dengan cookie session bertanda tangan HMAC-SHA256
   (`httpOnly`, `sameSite=lax`, `Secure` di produksi). Hanya user
-  `is_admin = 1` yang bisa masuk, dan statusnya dicek ulang ke database pada
+  `is_admin = true` yang bisa masuk, dan statusnya dicek ulang ke database pada
   setiap permintaan.
 - **Dashboard** — jumlah produk, produk aktif, jumlah kategori, produk stok
   habis, plus 8 produk terakhir yang diubah.
@@ -45,13 +47,19 @@ rizqyutamaelectric/              panel-rizqyutamaelectric/  ← repo ini
 - **Gambar** — unggah JPEG/PNG/WEBP/GIF (maks 2 MB) atau pasang URL eksternal.
   File lama otomatis dibersihkan dari disk saat tidak dipakai lagi.
 - **Validasi** — pesan berbahasa Indonesia untuk setiap kesalahan input,
-  termasuk batas kolom MySQL, jadi tidak ada error 500 dari form.
+  termasuk batas kolom database, jadi tidak ada error 500 dari form.
 
 ## Kebutuhan Sistem
 
 - Node.js 20+ (dibangun & diuji pada v24)
-- MySQL 8 yang sudah berisi database `rizqyutamaelectric`
-- Database dan kredensial MySQL untuk storefront
+- Koneksi **Supabase (Postgres)** — sama dengan storefront, ambil connection
+  string-nya dari `.env.local` storefront (`SUPABASE_DB_URL`)
+- *(opsional)* MySQL 8, hanya bila `SUPABASE_DB_URL` sengaja dikosongkan
+
+Database harus **sudah bisa dihubungi** saat panel dijalankan; panel tidak
+menyalakan database-nya sendiri. Skema database dibuat sekali dari
+`rizqyutamaelectric/supabase/schema.sql` (Supabase Dashboard → SQL Editor);
+langkah lengkapnya ada di [docs/ADMIN.md](docs/ADMIN.md#menyiapkan-database).
 
 ## Menjalankan
 
@@ -84,11 +92,8 @@ Salin `.env.example` menjadi `.env.local`, lalu isi:
 
 | Variabel | Wajib | Keterangan |
 | --- | --- | --- |
-| `MYSQL_HOST` | ya | default `127.0.0.1` |
-| `MYSQL_PORT` | ya | default `3306` |
-| `MYSQL_USER` | ya | user MySQL |
-| `MYSQL_PASSWORD` | tidak | kosongkan bila tanpa password |
-| `MYSQL_DATABASE` | ya | harus `rizqyutamaelectric` |
+| `SUPABASE_DB_URL` | **ya** | Connection string Postgres Supabase (mode Session/Pooler). Selama terisi, panel memakai Supabase — sama dengan storefront. |
+| `MYSQL_HOST` / `MYSQL_PORT` / `MYSQL_USER` / `MYSQL_PASSWORD` / `MYSQL_DATABASE` | tidak | **Cadangan.** Dipakai hanya bila `SUPABASE_DB_URL` kosong. `MYSQL_DATABASE` harus `rizqyutamaelectric`. |
 | `SESSION_SECRET` | **wajib** | Kunci HMAC penandatangan cookie. Generate: `openssl rand -base64 32`. **Jangan dipakai ulang antar instalasi.** |
 | `ADMIN_PUBLIC_URL` | ya | Origin publik panel, mis. `https://admin.tokomu.com`. Dipakai menyusun URL gambar. |
 | `NEXT_PUBLIC_STOREFRONT_URL` | ya | Origin toko, untuk tombol "Lihat Toko". |
@@ -111,7 +116,7 @@ Salin `.env.example` menjadi `.env.local`, lalu isi:
 | `admin@rizqyutama.com` | `admin123` |
 
 **Ganti password ini sebelum dipakai sungguhan.** Panel hanya menerima user
-dengan `is_admin = 1`; menambah admin lain cukup dengan menyisipkan baris
+dengan `is_admin = true`; menambah admin lain cukup dengan menyisipkan baris
 `users` berisi hash bcrypt.
 
 ## Struktur Proyek
@@ -126,7 +131,7 @@ app/
 components/admin/     Sidebar, form produk/kategori, tombol, header
 lib/
   auth.ts             verifySession() & assertAdmin()
-  db.ts               Koneksi & helper query (prepared statement)
+  db.ts               Koneksi database: Supabase (pg) utama, mysql2 cadangan
   session.ts          Pembuatan/pembacaan cookie session
   session-token.ts    Tanda tangan HMAC + validasi kedaluwarsa
   slug.ts, slugify.ts Slug unik & normalisasi
@@ -151,7 +156,8 @@ gambar langsung bisa diakses tanpa rebuild.
   bergantung pada layout.
 - `users.is_admin` dicek ke database pada setiap permintaan, sehingga pencabutan
   akses berlaku seketika tanpa menunggu cookie kedaluwarsa.
-- Seluruh query memakai prepared statement (`mysql2`).
+- Seluruh query memakai prepared statement — `pg` (Supabase) atau `mysql2`
+  (cadangan), tidak pernah string SQL gabungan.
 - Tanda tangan cookie diverifikasi dengan `timingSafeEqual`.
 - Path traversal dicegah; nama file selalu dibuat server, bukan diambil dari
   browser.
@@ -167,8 +173,10 @@ gambar langsung bisa diakses tanpa rebuild.
 | React | 19.2.8 |
 | TypeScript | 5 |
 | Tailwind CSS | 4 |
-| mysql2 | ^3.24.4 |
+| pg | ^8.23.1 |
+| mysql2 | ^3.24.4 (cadangan) |
 | bcryptjs | ^3.0.2 |
 
-Tanpa ORM — seluruh akses data memakai prepared statement `mysql2` di
-`lib/db.ts`. Versi `0.1.0`, lisensi privat.
+Tanpa ORM — seluruh akses data memakai prepared statement lewat `query()` di
+`lib/db.ts`: driver `pg` bila `SUPABASE_DB_URL` terisi, `mysql2` bila tidak.
+Versi `0.1.0`, lisensi privat.

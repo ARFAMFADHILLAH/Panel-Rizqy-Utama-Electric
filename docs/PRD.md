@@ -6,7 +6,7 @@
 | Versi | 1.0 |
 | Status | Selesai diimplementasikan |
 | Port | 3001 |
-| Basis data | MySQL `rizqyutamaelectric` (dipakai bersama storefront) |
+| Basis data | Supabase (Postgres) `rizqyutamaelectric` (dipakai bersama storefront); MySQL sebagai cadangan |
 
 Dokumen ini menjelaskan **apa** yang harus ada di panel administrasi, **siapa**
 yang memakainya, dan **kapan** dianggap selesai. Detail teknis harian ada di
@@ -17,7 +17,8 @@ yang memakainya, dan **kapan** dianggap selesai. Detail teknis harian ada di
 ## 1. Latar Belakang
 
 Toko online Rizqy Utama Electric berjalan sebagai aplikasi Next.js di port 3000.
-Produk, kategori, harga, dan stoknya berada di tabel MySQL. Pada saat itu
+Produk, kategori, harga, dan stoknya berada di database yang sama dengan
+storefront (Supabase/Postgres). Pada saat itu
 belum ada antarmuka untuk mengelola katalog: setiap perubahan harus dilakukan
 melalui SQL secara manual, yang rawan salah dan tidak memiliki jejak audit.
 
@@ -105,14 +106,14 @@ tidak ada sama sekali (pesan error identik dengan email tidak terdaftar).
 | FR-3.10 | ID produk yang tidak valid (non-numerik, negatif, nol, atau tidak ada) menghasilkan **404**, bukan error 500. |
 | FR-3.11 | Perubahan status aktif/nonaktif langsung mengubah tampilan di storefront. |
 
-**Aturan validasi produk** (mengikuti batas kolom MySQL agar tidak jadi error 500):
+**Aturan validasi produk** (mengikuti batas kolom database agar tidak jadi error 500):
 
 | Field | Aturan |
 | --- | --- |
 | Nama | Wajib, ≤ 255 karakter |
 | Kategori | Wajib, harus id yang benar-benar ada |
-| Harga | Angka bulat ≥ 0, maks `4.294.967.295` (`int unsigned`) |
-| Stok | Angka bulat ≥ 0, maks `4.294.967.295` (`int unsigned`) |
+| Harga | Angka bulat ≥ 0, maks `2.147.483.647` (`integer` / `int`) |
+| Stok | Angka bulat ≥ 0, maks `2.147.483.647` (`integer` / `int`) |
 | SKU | Opsional, ≤ 255 karakter, unik bila diisi |
 | Deskripsi | Opsional, maks 65.535 byte (`TEXT`) |
 | Slug | Otomatis bila kosong; unik |
@@ -165,7 +166,7 @@ tidak ada sama sekali (pesan error identik dengan email tidak terdaftar).
 | ID | Kategori | Persyaratan |
 | --- | --- | --- |
 | NFR-1 | Keamanan | Setiap Server Action memeriksa ulang session admin — layout halaman tidak diandalkan sebagai penjaga karena action adalah entry point POST tersendiri. |
-| NFR-2 | Keamanan | Seluruh query memakai prepared statement (`mysql2`); tidak ada penggabungan string SQL dari input pengguna. |
+| NFR-2 | Keamanan | Seluruh query memakai prepared statement (`pg`/`mysql2`); tidak ada penggabungan string SQL dari input pengguna. |
 | NFR-3 | Keamanan | Tanda tangan cookie diverifikasi dengan `timingSafeEqual`. |
 | NFR-4 | Keamanan | Path traversal dicegah saat membaca/menghapus file upload; nama berawalan titik ditolak. |
 | NFR-5 | Keamanan | Halaman panel diberi `robots: noindex`; `/robots.txt` melarang seluruh perayapan. |
@@ -214,8 +215,8 @@ rizqyutamaelectric/            panel-rizqyutamaelectric/
   Next.js :3000  (read-only        Next.js :3001  (read + write)
   dari sisi admin)                │
         │                         │
-        └──────────► MySQL ◄──────┘
-                  db: rizqyutamaelectric
+        └──────────── Supabase ───┘
+                   db: rizqyutamaelectric
                 products, categories, users
 ```
 

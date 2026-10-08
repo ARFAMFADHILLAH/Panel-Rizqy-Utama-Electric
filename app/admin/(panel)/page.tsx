@@ -22,7 +22,7 @@ export default async function DashboardPage() {
   const [stats] = await query<DashboardStats[]>(
     `SELECT
        (SELECT COUNT(*) FROM products)                      AS total_products,
-       (SELECT COUNT(*) FROM products WHERE is_active = 1)  AS active_products,
+       (SELECT COUNT(*) FROM products WHERE is_active = TRUE) AS active_products,
        (SELECT COUNT(*) FROM categories)                     AS total_categories,
        (SELECT COUNT(*) FROM products WHERE stock = 0)       AS out_of_stock`,
   );

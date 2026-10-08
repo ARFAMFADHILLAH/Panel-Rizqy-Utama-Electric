@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { peekSession } from "@/lib/auth";
-import { storeName, storefrontUrl } from "@/lib/format";
 import LoginForm from "@/components/admin/LoginForm";
 
 export const dynamic = "force-dynamic";
@@ -20,9 +19,9 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
     <div className="flex min-h-screen items-center justify-center bg-navy-900 px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
-          <p className="text-lg font-extrabold tracking-tight text-white">RIZQY UTAMA</p>
+          <p className="text-lg font-extrabold tracking-tight text-white">Rizqy Utama Electric</p>
           <p className="text-[11px] font-bold uppercase tracking-widest text-brand-400">
-            Electric · Panel Admin
+            Panel Admin
           </p>
         </div>
 
@@ -35,14 +34,6 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
           <LoginForm nextPath={nextPath} />
         </div>
 
-        <a
-          href={storefrontUrl()}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-5 block text-center text-sm text-navy-200 transition hover:text-brand-400"
-        >
-          ← Kembali ke {storeName()}
-        </a>
       </div>
     </div>
   );

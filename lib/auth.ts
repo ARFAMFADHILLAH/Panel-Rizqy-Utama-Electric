@@ -30,7 +30,7 @@ export const verifySession = cache(async (): Promise<AdminUser> => {
   );
 
   const user = users[0];
-  if (!user || user.is_admin !== 1) redirect("/admin/login");
+  if (!user || !user.is_admin) redirect("/admin/login");
 
   return user;
 });
@@ -49,7 +49,7 @@ export async function assertAdmin(): Promise<AdminUser> {
   );
 
   const user = users[0];
-  if (!user || user.is_admin !== 1) throw new Error("Unauthorized: bukan admin.");
+  if (!user || !user.is_admin) throw new Error("Unauthorized: bukan admin.");
 
   return user;
 }

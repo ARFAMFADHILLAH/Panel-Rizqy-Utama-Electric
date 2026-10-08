@@ -7,7 +7,7 @@ export function storeName(): string {
 }
 
 export function storefrontUrl(): string {
-  return (process.env.NEXT_PUBLIC_STOREFRONT_URL ?? "http://localhost:3000").replace(/\/+$/, "");
+  return (process.env.NEXT_PUBLIC_STOREFRONT_URL ?? "https://rizqy-utama-electric.pages.dev/").replace(/\/+$/, "");
 }
 
 export function formatDateTime(value: Date | string | null | undefined): string {

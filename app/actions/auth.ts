@@ -2,7 +2,7 @@
 
 import bcrypt from "bcryptjs";
 import { redirect } from "next/navigation";
-import { query } from "@/lib/db";
+import { DB_UNAVAILABLE_MESSAGE, isDbUnavailable, query } from "@/lib/db";
 import { toText } from "@/lib/format";
 import { createSession, destroySession } from "@/lib/session";
 import type { ActionState, AdminUser } from "@/lib/types";
@@ -23,16 +23,17 @@ export async function loginAction(
     return { error: "Email dan password wajib diisi." };
   }
 
-  const users = await query<(AdminUser & { password: string })[]>(
-    "SELECT id, name, email, is_admin, password FROM users WHERE email = ? LIMIT 1",
-    [email],
-  );
+  const users = await findUserByEmail(email);
+
+  if (users === null) {
+    return { error: DB_UNAVAILABLE_MESSAGE };
+  }
 
   const user = users[0];
   const hash = user ? user.password : DUMMY_HASH;
   const passwordOk = await bcrypt.compare(password, hash);
 
-  if (!user || !passwordOk || user.is_admin !== 1) {
+  if (!user || !passwordOk || !user.is_admin) {
     return { error: GENERIC_ERROR };
   }
 
@@ -45,4 +46,26 @@ export async function loginAction(
 export async function logoutAction(): Promise<void> {
   await destroySession();
   redirect("/admin/login");
+}
+
+/**
+ * Mencari user berdasarkan email. Mengembalikan `null` bila database tidak bisa
+ * dihubungi — server MySQL mati atau port tertutup — supaya form menampilkan
+ * pesan yang tepat, bukan error 500 dengan stack trace, dan bukan juga
+ * "email atau password salah" yang menyesatkan. Kesalahan lain (kredensial
+ * salah, SQL bermasalah) diteruskan apa adanya agar tidak tertutupi.
+ */
+async function findUserByEmail(
+  email: string,
+): Promise<(AdminUser & { password: string })[] | null> {
+  try {
+    return await query<(AdminUser & { password: string })[]>(
+      "SELECT id, name, email, is_admin, password FROM users WHERE email = ? LIMIT 1",
+      [email],
+    );
+  } catch (error) {
+    if (!isDbUnavailable(error)) throw error;
+    console.error("[auth] Koneksi database gagal:", error);
+    return null;
+  }
 }

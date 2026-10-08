@@ -16,12 +16,15 @@ type ProductRow = {
   stock: number;
   description: string | null;
   image: string | null;
-  featured: number;
-  is_active: number;
+  featured: number | boolean;
+  is_active: number | boolean;
 };
 
-/** Batas kolom `int unsigned` di MySQL. Lewati batas ini akan jadi error 500. */
-const MAX_UNSIGNED_INT = 4294967295;
+/**
+ * Batas kolom `integer` — sama untuk Postgres maupun MySQL `int`.
+ * Lewati batas ini akan jadi error 500.
+ */
+const MAX_INT = 2147483647;
 
 /** Batas kolom varchar(255) dan TEXT (65.535 byte) di MySQL. */
 const MAX_VARCHAR = 255;
@@ -36,8 +39,8 @@ function readProduct(formData: FormData, current?: ProductRow) {
   const stock = toInt(formData.get("stock"));
   const description = toText(formData.get("description"));
   const imageUrlInput = toText(formData.get("image_url"));
-  const featured = formData.get("featured") === "on" ? 1 : 0;
-  const isActive = formData.get("is_active") === "on" ? 1 : 0;
+  const featured = formData.get("featured") === "on";
+  const isActive = formData.get("is_active") === "on";
 
   if (!name) return { error: "Nama produk wajib diisi." };
   if (name.length > 255) return { error: "Nama produk maksimal 255 karakter." };
@@ -47,14 +50,14 @@ function readProduct(formData: FormData, current?: ProductRow) {
   if (!Number.isInteger(price) || price < 0) {
     return { error: "Harga harus berupa angka bulat >= 0." };
   }
-  if (price > MAX_UNSIGNED_INT) {
-    return { error: "Harga maksimal Rp 4.294.967.295." };
+  if (price > MAX_INT) {
+    return { error: "Harga maksimal Rp 2.147.483.647." };
   }
   if (!Number.isInteger(stock) || stock < 0) {
     return { error: "Stok harus berupa angka bulat >= 0." };
   }
-  if (stock > MAX_UNSIGNED_INT) {
-    return { error: "Stok maksimal 4.294.967.295." };
+  if (stock > MAX_INT) {
+    return { error: "Stok maksimal 2.147.483.647." };
   }
   if (sku.length > MAX_VARCHAR) {
     return { error: "SKU maksimal 255 karakter." };
@@ -190,7 +193,8 @@ export async function updateProductAction(
   await query(
     `UPDATE products
         SET category_id = ?, name = ?, slug = ?, sku = ?, description = ?,
-            price = ?, stock = ?, image = ?, featured = ?, is_active = ?
+            price = ?, stock = ?, image = ?, featured = ?, is_active = ?,
+            updated_at = now()
       WHERE id = ?`,
     [
       parsed.categoryId,
@@ -231,7 +235,9 @@ export async function toggleProductAction(formData: FormData): Promise<void> {
   const id = toInt(formData.get("id"));
   if (!Number.isInteger(id) || id <= 0) return;
 
-  await query("UPDATE products SET is_active = 1 - is_active WHERE id = ?", [id]);
+  await query("UPDATE products SET is_active = NOT is_active, updated_at = now() WHERE id = ?", [
+    id,
+  ]);
 
   revalidatePath("/admin");
   revalidatePath("/admin/produk");

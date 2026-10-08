@@ -160,10 +160,10 @@ export default function Sidebar({ user }: Props) {
         <div>
           <Link href="/admin" className="mb-7 block px-3 leading-tight">
             <span className="block text-base font-extrabold tracking-tight text-white">
-              RIZQY UTAMA
+              RIZQY UTAMA ELECTRIC
             </span>
             <span className="block text-[11px] font-bold uppercase tracking-widest text-brand-500">
-              Electric · Admin
+            Panel Admin
             </span>
           </Link>
           {links}

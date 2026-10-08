@@ -26,7 +26,8 @@ export type AdminUser = {
   id: number;
   name: string;
   email: string;
-  is_admin: number;
+  /** boolean di Postgres, 1/0 di MySQL — baca dengan kebenaran (truthy). */
+  is_admin: number | boolean;
 };
 
 export type DashboardStats = {

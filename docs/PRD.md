@@ -9,8 +9,8 @@
 | Basis data | Supabase (Postgres) `rizqyutamaelectric` (dipakai bersama storefront); MySQL sebagai cadangan |
 
 Dokumen ini menjelaskan **apa** yang harus ada di panel administrasi, **siapa**
-yang memakainya, dan **kapan** dianggap selesai. Detail teknis harian ada di
-[ADMIN.md](./ADMIN.md);[peta data ada di [ERD.md](./ERD.md).
+yang memakainya, dan **kapan** dianggap selesai. Peta data ada di
+[ERD.md](./ERD.md).
 
 ---
 
@@ -161,6 +161,23 @@ tidak ada sama sekali (pesan error identik dengan email tidak terdaftar).
 | FR-7.3 | Toko hanya menampilkan produk `is_active = 1`; produk nonaktif menjadi 404 di halaman detailnya. |
 | FR-7.4 | Panel tidak melakukan deploy, restart, atau rebuild pada storefront. |
 
+### FR-8 Asisten AI Inventori (opsional)
+
+| ID | Persyaratan |
+| --- | --- |
+| FR-8.1 | Menu "Asisten AI" hanya muncul dan dapat diakses oleh email yang terdaftar di `AI_ALLOWED_EMAILS`. Bila kosong, fitur nonaktif total (fail-closed). |
+| FR-8.2 | Admin dapat memberi perintah bebas dalam bahasa Indonesia lewat chat; balasan di-stream. |
+| FR-8.3 | Agent dapat membaca Google Sheets (service account) dengan header dibaca dinamis dari baris pertama; sheet dipilih lewat `GOOGLE_SHEETS_CONFIG` (mis. Alat Ukur, AC, extensible). |
+| FR-8.4 | Agent dapat membaca produk, kategori, dan statistik dari database panel memakai query berparameter. |
+| FR-8.5 | Agent dapat menyusun laporan (stok menipis, stok habis, ringkasan katalog) dari data nyata; dilarang mengarang angka. |
+| FR-8.6 | Aksi tulis (tambah/ubah/impor) hanya menghasilkan **proposal**; tidak ada penulisan sebelum admin menekan tombol Konfirmasi. |
+| FR-8.7 | Proposal ditampilkan sebagai kartu (field dan/atau daftar baris) di chat, dengan tombol Konfirmasi dan tautan ke halaman Produk. |
+| FR-8.8 | Server Action konfirmasi memvalidasi ulang seluruh field memakai aturan yang sama dengan form Produk (pesan error identik), dan mengecek kategori + SKU kembali. |
+| FR-8.9 | Impor dari sheet dibatasi 100 baris; baris tanpa nama/harga/stok atau SKU duplikat dilewati dan dilaporkan jumlahnya. |
+| FR-8.10 | Endpoint `/api/ai/chat` memverifikasi cookie session + `users.is_admin` lalu mencocokkan email dengan allowlist; membalas JSON 401/403 (bukan redirect) dan menolak request dari luar origin panel. |
+| FR-8.11 | Error sistem (API key bermasalah, sheet tidak terbaca) memicu notifikasi email dengan throttle; pesan ke chat memakai bahasa Indonesia, bukan stack trace. |
+| FR-8.12 | Notifikasi email opsional (SMTP Gmail): produk diubah lewat AI, stok menipis, laporan harian terjadwal (`/api/cron/daily-report` + `CRON_SECRET`), dan error sistem. Kegagalannya tidak menggagalkan operasi inti; tanpa SMTP, fitur lain tetap jalan. |
+
 ## 6. Persyaratan Non-Fungsional
 
 | ID | Kategori | Persyaratan |
@@ -206,6 +223,15 @@ Login → Produk → klik toggle → is_active berbalik
 ```
 Login → Kategori → isi nama → simpan
      → kategori baru langsung muncul di dropdown form produk & filter panel
+```
+
+**Pakai Asisten AI (ubah/impor produk)**
+
+```
+Login (email di AI_ALLOWED_EMAILS) → Asisten AI → tulis perintah
+     → agent baca sheet/DB → tampil jawaban + kartu proposal
+     → admin klik "Konfirmasi" → Server Action validasi ulang → tulis DB
+     → revalidatePath → produk & notifikasi email terkirim
 ```
 
 ## 8. Arsitektur (ringkas)

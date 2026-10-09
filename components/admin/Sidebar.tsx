@@ -8,9 +8,17 @@ import { storefrontUrl } from "@/lib/format";
 
 type Props = {
   user: { name: string; email: string };
+  aiEnabled?: boolean;
 };
 
-const NAV = [
+type NavItem = {
+  href: string;
+  label: string;
+  icon: string;
+  aiOnly?: boolean;
+};
+
+const NAV: NavItem[] = [
   {
     href: "/admin",
     label: "Dashboard",
@@ -26,19 +34,27 @@ const NAV = [
     label: "Kategori",
     icon: "M7 4h13v16H7zM7 4L4 7v13h3M10 9h7M10 13h7",
   },
+  {
+    href: "/admin/ai",
+    label: "Asisten AI",
+    icon: "M12 3v2m0 14v2M5.6 5.6l1.4 1.4m10 10l1.4 1.4M3 12h2m14 0h2M5.6 18.4l1.4-1.4m10-10l1.4-1.4M12 8a4 4 0 100 8 4 4 0 000-8z",
+    aiOnly: true,
+  },
 ];
 
 function isActive(pathname: string, href: string): boolean {
   return href === "/admin" ? pathname === href : pathname.startsWith(href);
 }
 
-export default function Sidebar({ user }: Props) {
+export default function Sidebar({ user, aiEnabled = false }: Props) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
+  const items = NAV.filter((item) => !item.aiOnly || aiEnabled);
+
   const links = (
     <nav className="flex flex-col gap-1">
-      {NAV.map((item) => {
+      {items.map((item) => {
         const active = isActive(pathname, item.href);
         return (
           <Link

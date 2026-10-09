@@ -30,7 +30,6 @@ rizqyutamaelectric/              panel-rizqyutamaelectric/  ← repo ini
 | --- | --- |
 | [docs/PRD.md](docs/PRD.md) | Product Requirements: tujuan, ruang lingkup, persyaratan fungsional & non-fungsional, kriteria penerimaan |
 | [docs/ERD.md](docs/ERD.md) | Entity Relationship Diagram, definisi kolom, DDL, aturan integritas |
-| [docs/ADMIN.md](docs/ADMIN.md) | Panduan operasional: konfigurasi, akun admin, fitur, keamanan, pemecahan masalah |
 
 ## Fitur
 
@@ -48,6 +47,11 @@ rizqyutamaelectric/              panel-rizqyutamaelectric/  ← repo ini
   File lama otomatis dibersihkan dari disk saat tidak dipakai lagi.
 - **Validasi** — pesan berbahasa Indonesia untuk setiap kesalahan input,
   termasuk batas kolom database, jadi tidak ada error 500 dari form.
+- **Asisten AI** *(opsional)* — chat berbahasa Indonesia (Google Gemini) untuk
+  membaca Google Sheet, mencari produk, menyusun laporan, dan mengusulkan
+  tambah/ubah/impor produk. Semua perubahan wajib dikonfirmasi admin dulu.
+  Setup: isi `AI_ALLOWED_EMAILS`, `GEMINI_API_KEY`, dan kredensial service
+  account Google Sheets di `.env.local` (lihat tabel konfigurasi di bawah).
 
 ## Kebutuhan Sistem
 
@@ -58,8 +62,7 @@ rizqyutamaelectric/              panel-rizqyutamaelectric/  ← repo ini
 
 Database harus **sudah bisa dihubungi** saat panel dijalankan; panel tidak
 menyalakan database-nya sendiri. Skema database dibuat sekali dari
-`rizqyutamaelectric/supabase/schema.sql` (Supabase Dashboard → SQL Editor);
-langkah lengkapnya ada di [docs/ADMIN.md](docs/ADMIN.md#menyiapkan-database).
+`rizqyutamaelectric/supabase/schema.sql` (Supabase Dashboard → SQL Editor).
 
 ## Menjalankan
 
@@ -101,6 +104,13 @@ Salin `.env.example` menjadi `.env.local`, lalu isi:
 | `NEXT_PUBLIC_WA_NUMBER` | tidak | Nomor WhatsApp toko. |
 | `ADMIN_SESSION_HOURS` | tidak | Masa berlaku sesi, default `8`. |
 | `ADMIN_COOKIE_SECURE` | tidak | Override flag `Secure`; set `false` **hanya** untuk uji lokal via HTTP. |
+| `AI_ALLOWED_EMAILS` | tidak | Email admin yang boleh memakai Asisten AI (pisah koma). Kosong = AI nonaktif. |
+| `GEMINI_API_KEY` / `GEMINI_MODEL` | tidak | API key Gemini (default model `gemini-2.5-flash`). |
+| `GOOGLE_SERVICE_ACCOUNT_EMAIL` / `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` | tidak | Kredensial service account untuk membaca Google Sheets. |
+| `GOOGLE_SHEETS_CONFIG` | tidak | Daftar spreadsheet, JSON `[{"name","id","range"}]`. Opsi `columns` (peta kolom), `defaultStock`, `seriesRows`, `namePrefix` (prefix nama, mis. merek); `range` bisa `"'NAMA TAB'!A:Z"` untuk tab tertentu. |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `NOTIFY_TO` | tidak | Notifikasi email via Gmail SMTP + App Password. |
+| `LOW_STOCK_THRESHOLD` | tidak | Ambang stok menipis, default `5`. |
+| `CRON_SECRET` | tidak | Bearer token untuk `/api/cron/daily-report`. |
 
 > `ADMIN_PUBLIC_URL` harus sama dengan origin yang dipakai membuka panel,
 > karena URL gambar disimpan apa adanya di kolom `products.image`.
@@ -111,27 +121,38 @@ Salin `.env.example` menjadi `.env.local`, lalu isi:
 
 ## Akun Admin
 
-| Email | Password |
-| --- | --- |
-| `admin@rizqyutama.com` | `admin123` |
+Buat akun adminmu sendiri di tabel `users` (`is_admin = true`) dengan `password`
+berisi **hash bcrypt** (bukan teks biasa). Tidak ada kredensial default di repo
+ini.
 
-**Ganti password ini sebelum dipakai sungguhan.** Panel hanya menerima user
-dengan `is_admin = true`; menambah admin lain cukup dengan menyisipkan baris
-`users` berisi hash bcrypt.
+```bash
+# buat hash bcrypt untuk password pilihanmu
+node -e "console.log(require('bcryptjs').hashSync(process.argv[1], 12))" 'password-pilihanmu'
+```
+
+Panel hanya menerima user dengan `is_admin = true`; menambah admin lain cukup
+dengan menyisipkan baris `users` berisi hash bcrypt.
 
 ## Struktur Proyek
 
 ```
 app/
-  actions/            Server Action: auth, produk, kategori
+  actions/            Server Action: auth, produk, kategori, ai
   admin/login/        Halaman login
-  admin/(panel)/      Layout + dashboard, produk, kategori
+  admin/(panel)/      Layout + dashboard, produk, kategori, ai
+  api/ai/chat/        Endpoint streaming chat Asisten AI
+  api/cron/           Pemicu laporan harian
   uploads/[...path]/  Route handler penyaji file gambar
   robots.ts           Melarang perayapan seluruh panel
 components/admin/     Sidebar, form produk/kategori, tombol, header
+components/admin/ai/  Chat Asisten AI + kartu proposal konfirmasi
 lib/
+  ai/                 access, system-prompt, tools, proposal (Asisten AI)
   auth.ts             verifySession() & assertAdmin()
   db.ts               Koneksi database: Supabase (pg) utama, mysql2 cadangan
+  product-service.ts  Validasi + create/update produk (dipakai form & AI)
+  mailer.ts, notify.ts Notifikasi email + throttle
+  sheets.ts           Pembaca Google Sheets (service account)
   session.ts          Pembuatan/pembacaan cookie session
   session-token.ts    Tanda tangan HMAC + validasi kedaluwarsa
   slug.ts, slugify.ts Slug unik & normalisasi
@@ -139,7 +160,7 @@ lib/
   format.ts, types.ts Format Rupiah/tanggal & tipe data
 proxy.ts              Saringan awal untuk /admin/*
 uploads/              File gambar hasil unggahan (bukan public/)
-docs/                 PRD, ERD, panduan admin
+docs/                 PRD, ERD
 ```
 
 ### Kenapa upload tidak memakai `public/`
@@ -176,6 +197,10 @@ gambar langsung bisa diakses tanpa rebuild.
 | pg | ^8.23.1 |
 | mysql2 | ^3.24.4 (cadangan) |
 | bcryptjs | ^3.0.2 |
+| ai / @ai-sdk/google | ^7 / ^4 (Asisten AI, opsional) |
+| google-auth-library | ^11 (Google Sheets) |
+| nodemailer | ^10 (notifikasi email) |
+| zod | ^4 (skema tool AI) |
 
 Tanpa ORM — seluruh akses data memakai prepared statement lewat `query()` di
 `lib/db.ts`: driver `pg` bila `SUPABASE_DB_URL` terisi, `mysql2` bila tidak.

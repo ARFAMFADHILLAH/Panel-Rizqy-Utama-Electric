@@ -208,13 +208,13 @@ dijalankan panel agar pengguna mendapat pesan ramah, bukan error 500.
 
 | Tabel | Jumlah | Keterangan |
 | --- | --- | --- |
-| `users` | 1 | `admin@rizqyutama.com` / `admin123`, `is_admin = 1` |
+| `users` | 1 | akun admin awal (`is_admin = true`); kredensial dibuat sendiri, tidak ada default di repo |
 | `categories` | 6 | Kabel, MCB & Panel, Saklar & Stop Kontak, Lampu & LED, Pipa & Aksesoris, Alat Ukur |
 | `products` | 12 | Seluruhnya `is_active = 1` dan `image = NULL` |
 
-> **Ganti password admin sebelum dipakai sungguhan.** Hash baru dibuat dengan
+> **Buat/ubah password adminmu sendiri.** Hash baru dibuat dengan
 > bcrypt, bukan teks biasa:
 >
 > ```sql
-> UPDATE users SET password = '<hash bcrypt>' WHERE email = 'admin@rizqyutama.com';
+> UPDATE users SET password = '<hash bcrypt>' WHERE email = '<email adminmu>';
 > ```

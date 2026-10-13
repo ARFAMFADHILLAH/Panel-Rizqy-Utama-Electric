@@ -26,7 +26,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
         </div>
 
         <div className="rounded-lg border border-navy-700 bg-white p-6 shadow-xl sm:p-7">
-          <h1 className="text-lg font-bold text-navy-900">Masuk ke Panel</h1>
+          <h1 className="text-lg font-bold text-navy-900">Login</h1>
           <p className="mb-6 mt-1 text-sm text-gray-500">
             Gunakan akun admin untuk mengelola produk dan kategori.
           </p>

@@ -25,7 +25,7 @@ export default async function ProductListPage({ searchParams }: { searchParams: 
   const params: (string | number)[] = [];
 
   if (q && q.trim() !== "") {
-    where.push("(p.name LIKE ? OR p.sku LIKE ?)");
+    where.push("(LOWER(p.name) LIKE LOWER(?) OR LOWER(p.sku) LIKE LOWER(?))");
     params.push(`%${q.trim()}%`, `%${q.trim()}%`);
   }
   if (kategori) {

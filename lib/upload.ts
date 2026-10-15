@@ -1,8 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
-import path from "node:path";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 const MAX_BYTES = 2 * 1024 * 1024;
 
@@ -15,39 +14,42 @@ const ALLOWED: Record<string, string> = {
 };
 
 /**
- * Folder upload sengaja TIDAK memakai public/. Next.js memotret isi public/
- * saat build, sehingga file yang diunggah saat runtime tidak dilayani oleh
- * `next start` dan selalu 404. File dilayani lewat route handler
- * /uploads/[...path] supaya langsung bisa diakses tanpa rebuild.
+ * Gambar produk disimpan di Supabase Storage, bukan filesystem lokal — panel
+ * berjalan di serverless (Vercel) yang filesystem-nya read-only dan tidak
+ * persisten. Bucket wajib publik agar URL-nya bisa dirender oleh toko pada
+ * origin berbeda. Kolom products.image menyimpan URL publik ini.
  */
-function uploadDir(): string {
-  return path.join(process.cwd(), "uploads");
+function bucket(): string {
+  return process.env.SUPABASE_STORAGE_BUCKET ?? "product-images";
 }
 
-function publicBase(): string {
-  return (process.env.ADMIN_PUBLIC_URL ?? "http://localhost:3001").replace(/\/+$/, "");
-}
+let client: SupabaseClient | undefined;
 
-export function contentTypeFor(filename: string): string | null {
-  switch (path.extname(filename).toLowerCase()) {
-    case ".jpg":
-    case ".jpeg":
-      return "image/jpeg";
-    case ".png":
-      return "image/png";
-    case ".webp":
-      return "image/webp";
-    case ".gif":
-      return "image/gif";
-    default:
-      return null;
+function storage(): SupabaseClient {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    throw new Error(
+      "Supabase Storage belum dikonfigurasi. Isi SUPABASE_URL dan "
+        + "SUPABASE_SERVICE_ROLE_KEY di .env.local.",
+    );
   }
+  if (!client) {
+    client = createClient(url, key, { auth: { persistSession: false } });
+  }
+  return client;
+}
+
+/** Awalan URL publik objek di bucket — juga penanda file milik panel ini. */
+function publicPrefix(): string | null {
+  const url = process.env.SUPABASE_URL?.replace(/\/+$/, "");
+  return url ? `${url}/storage/v1/object/public/${bucket()}/` : null;
 }
 
 export type UploadResult = { ok: true; url: string } | { ok: false; error: string };
 
 /**
- * Simpan file gambar ke folder uploads/ dan kembalikan URL publiknya.
+ * Simpan gambar ke Supabase Storage dan kembalikan URL publiknya.
  * Nama file dibuat sendiri — nama asli dari browser tidak pernah dipakai.
  */
 export async function saveProductImage(file: File): Promise<UploadResult> {
@@ -62,14 +64,30 @@ export async function saveProductImage(file: File): Promise<UploadResult> {
     return { ok: false, error: "Ukuran gambar maksimal 2 MB." };
   }
 
+  const prefix = publicPrefix();
+  if (!prefix) {
+    return { ok: false, error: "SUPABASE_URL belum dikonfigurasi." };
+  }
+
   const filename = `${Date.now()}-${randomUUID().slice(0, 8)}.${extension}`;
-  const dir = uploadDir();
-  await mkdir(dir, { recursive: true });
 
-  const bytes = Buffer.from(await file.arrayBuffer());
-  await writeFile(path.join(dir, filename), bytes, { flag: "wx" });
+  try {
+    const bytes = Buffer.from(await file.arrayBuffer());
+    const { error } = await storage()
+      .storage.from(bucket())
+      .upload(filename, bytes, {
+        contentType: file.type || "application/octet-stream",
+        upsert: false,
+      });
+    if (error) {
+      return { ok: false, error: `Gagal mengunggah gambar: ${error.message}` };
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, error: `Gagal mengunggah gambar: ${message}` };
+  }
 
-  return { ok: true, url: `${publicBase()}/uploads/${filename}` };
+  return { ok: true, url: `${prefix}${filename}` };
 }
 
 /** Terima URL absolut http(s) atau path relatif yang diawali "/". */
@@ -83,49 +101,17 @@ export function normalizeImageUrl(value: string): string | null {
   return null;
 }
 
-/** Cegah path traversal: hanya nama file sederhana tanpa awalan titik. */
-function isSafeFilename(filename: string): boolean {
-  return Boolean(
-    filename &&
-      !filename.includes("/") &&
-      !filename.includes("\\") &&
-      !filename.includes("..") &&
-      !filename.startsWith("."),
-  );
-}
-
-/** Ubah nama file dari URL panel menjadi path absolut yang aman, atau null. */
-export function resolveUploadPath(url: string | null): string | null {
+/** Ambil nama objek bila URL termasuk bucket panel ini; selain itu null. */
+function uploadedFilename(url: string | null): string | null {
   if (!url) return null;
-
-  const prefix = `${publicBase()}/uploads/`;
-  if (!url.startsWith(prefix)) return null;
+  const prefix = publicPrefix();
+  if (!prefix || !url.startsWith(prefix)) return null;
 
   const filename = url.slice(prefix.length);
-  if (!isSafeFilename(filename) || !contentTypeFor(filename)) return null;
-
-  const dir = uploadDir();
-  const target = path.join(dir, filename);
-  if (path.dirname(target) !== dir) return null;
-  return target;
-}
-
-/** Baca file upload untuk dilayani route handler. */
-export async function readUploadedImage(
-  filename: string,
-): Promise<{ ok: true; bytes: Buffer; type: string } | { ok: false }> {
-  const type = contentTypeFor(filename);
-  if (!type || !isSafeFilename(filename)) return { ok: false };
-
-  const dir = uploadDir();
-  const target = path.join(dir, filename);
-  if (path.dirname(target) !== dir) return { ok: false };
-
-  try {
-    return { ok: true, bytes: await readFile(target), type };
-  } catch {
-    return { ok: false };
+  if (!filename || filename.includes("/") || filename.includes("\\") || filename.includes("..")) {
+    return null;
   }
+  return filename;
 }
 
 /**
@@ -133,12 +119,12 @@ export async function readUploadedImage(
  * hosting/CDN lain) dibiarkan apa adanya.
  */
 export async function deleteUploadedImage(url: string | null): Promise<boolean> {
-  const target = resolveUploadPath(url);
-  if (!target) return false;
+  const filename = uploadedFilename(url);
+  if (!filename) return false;
 
   try {
-    await unlink(target);
-    return true;
+    const { error } = await storage().storage.from(bucket()).remove([filename]);
+    return !error;
   } catch {
     return false;
   }

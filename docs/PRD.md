@@ -26,7 +26,8 @@ Storefront adalah aplikasi yang **sudah dipakai pelanggan**, sehingga risikonya
 terlalu tinggi untuk dimodifikasi. Solusinya adalah membuat panel administrasi
 sebagai **aplikasi terpisah** yang berbagi database yang sama, sehingga:
 
-- storefront tidak perlu diubah sama sekali (nol risiko regresi ke pelanggan),
+- perubahan storefront dibatasi pada filter kategori aktif dan label kategori
+  nonaktif, sehingga alur belanja pelanggan tidak berubah,
 - katalog bisa dikelola lewat antarmuka web biasa,
 - panel bisa diamankan secara penuh karena tidak terekspos ke publik.
 
@@ -34,17 +35,17 @@ sebagai **aplikasi terpisah** yang berbagi database yang sama, sehingga:
 
 | # | Tujuan | Ukuran keberhasilan |
 | --- | --- | --- |
-| G1 | Admin dapat mengelola katalog tanpa menyentuh SQL | Semua operasi CRUD produk & kategori tersedia lewat UI |
+| G1 | Admin dapat mengelola katalog tanpa menyentuh SQL | Semua operasi CRUD produk & kategori, termasuk edit dan aktif/nonaktif kategori, tersedia lewat UI |
 | G2 | Perubahan panel langsung terlihat di storefront | Perubahan tampil di `:3000` tanpa rebuild atau deploy ulang |
-| G3 | Storefront tidak terganggu | Tidak ada file storefront yang berubah |
+| G3 | Storefront tidak terganggu | Alur belanja tetap; hanya kategori nonaktif yang disembunyikan |
 | G4 | Panel aman dari akses tidak sah | Setiap halaman dan setiap mutasi menolak non-admin |
-| G5 | Tidak ada tabel baru atau migrasi | Skema database tetap sama seperti sebelum panel dibuat |
+| G5 | Perubahan skema minimal dan aditif | Hanya kolom `categories.is_active` + index; tidak ada tabel baru |
 
 ## 3. Non-Tujuan (di luar lingkup)
 
 Panel ini **secara sengaja tidak** mencakup:
 
-- Manajemen pesanan, pembayaran, dan pengiriman (tokoclosing tidak menyimpan pesanan).
+- Manajemen pesanan, pembayaran, dan pengiriman (toko tidak menyimpan pesanan).
 - Manajemen pelanggan dan user non-admin.
 - Pengaturan toko, Appearance, atau konten marketing.
 - Multi-admin dengan hak akses berbeda (saat ini semua admin memiliki hak penuh).
@@ -71,7 +72,7 @@ tidak ada sama sekali (pesan error identik dengan email tidak terdaftar).
 | FR-1.1 | Admin login dengan email + password; kredensial dibandingkan terhadap hash bcrypt di `users.password`. |
 | FR-1.2 | Hanya `is_admin = 1` yang diterima. User non-admin ditolak. |
 | FR-1.3 | Pesan error sengaja dibuat generik ("Email atau password salah") untuk email salah maupun password salah, agar tidak membocorkan email yang terdaftar. |
-| FR-1.4 | Email yang tidak terdaftar tetap undergoes verifikasi bcrypt terhadap hash palsu agar waktu respons seragam (mitigasi enumerasi user). |
+| FR-1.4 | Email yang tidak terdaftar tetap menjalani verifikasi bcrypt terhadap hash palsu agar waktu respons seragam (mitigasi enumerasi user). |
 | FR-1.5 | Login berhasil membuat cookie session bertanda tangan HMAC-SHA256 dengan `httpOnly`, `sameSite=lax`, dan `Secure` di produksi. |
 | FR-1.6 | Sesi kedaluwarsa otomatis (default 8 jam, dapat dikonfigurasi). |
 | FR-1.7 | Status admin **dicek ulang ke database pada setiap permintaan**, sehingga mencabut `is_admin` langsung memutus akses tanpa menunggu cookie kedaluwarsa. |
@@ -95,7 +96,7 @@ tidak ada sama sekali (pesan error identik dengan email tidak terdaftar).
 | ID | Persyaratan |
 | --- | --- |
 | FR-3.1 | Menampilkan seluruh produk dalam tabel (nama, kategori, harga, stok, status, gambar). |
-| FR-3.2 | Pencarian `?q=` mencocokkan nama **atau** SKU. |
+| FR-3.2 | Pencarian `?q=` mencocokkan nama **atau** SKU, tanpa membedakan huruf besar/kecil. |
 | FR-3.3 | Filter `?kategori=<slug>` membatasi daftar ke satu kategori. |
 | FR-3.4 | Hasil pencarian kosong menampilkan "0 produk ditemukan", bukan halaman kosong. |
 | FR-3.5 | Admin dapat menambah produk baru melalui `/admin/produk/baru`. |
@@ -105,6 +106,7 @@ tidak ada sama sekali (pesan error identik dengan email tidak terdaftar).
 | FR-3.9 | Form memuat: nama, slug, SKU, kategori, deskripsi, harga, stok, gambar, checkbox **Featured** dan **Aktif**. |
 | FR-3.10 | ID produk yang tidak valid (non-numerik, negatif, nol, atau tidak ada) menghasilkan **404**, bukan error 500. |
 | FR-3.11 | Perubahan status aktif/nonaktif langsung mengubah tampilan di storefront. |
+| FR-3.12 | Editor deskripsi mendukung teks tebal/miring, judul bagian, daftar, pratinjau, dan template saran ala Tokopedia (Template Lengkap, Info Penting, Keunggulan Utama, Spesifikasi Teknis, Isi Kemasan, Garansi & Catatan). Data disimpan sebagai Markdown dan dirender aman di storefront. |
 
 **Aturan validasi produk** (mengikuti batas kolom database agar tidak jadi error 500):
 
@@ -132,15 +134,15 @@ tidak ada sama sekali (pesan error identik dengan email tidak terdaftar).
 
 | ID | Persyaratan |
 | --- | --- |
-| FR-5.1 | Gambar dapat dipasang dengan **unggah file** (JPEG/PNG/WEBP/GIF, maks 2 MB) atau dengan **URL** absolut `http(s)` / path diawali `/`. |
+| FR-5.1 | Gambar dapat dipasang dengan **unggah file** (JPEG/PNG/WEBP/GIF, maks 2 MB) ke Supabase Storage atau dengan **URL** absolut `http(s)` / path diawali `/`. |
 | FR-5.2 | Nama file dibuat oleh server (`<timestamp>-<random>.<ext>`); nama file dari browser tidak pernah dipakai. |
 | FR-5.3 | File non-gambar (txt, svg, pdf, php) ditolak berdasarkan MIME type. |
 | FR-5.4 | File kosong (0 byte) diperlakukan sebagai "tidak memilih file", bukan error. |
 | FR-5.5 | URL gambar > 255 karakter ditolak (batas kolom `varchar(255)`). |
 | FR-5.6 | Admin dapat menghapus gambar produk tanpa menghapus produknya. |
-| FR-5.7 | File lama di disk dihapus saat produk dihapus atau gambarnya diganti, **hanya** bila tidak ada produk lain yang memakai URL yang sama. |
-| FR-5.8 | URL gambar eksternal tidak pernah dihapus dari disk. |
-| FR-5.9 | Gambar dapat diakses lewat `/uploads/<nama-file>` tanpa rebuild. |
+| FR-5.7 | File lama di Supabase Storage dihapus saat produk dihapus atau gambarnya diganti, **hanya** bila tidak ada produk lain yang memakai URL yang sama. |
+| FR-5.8 | URL gambar eksternal tidak pernah dihapus dari storage panel. |
+| FR-5.9 | Gambar dapat diakses lewat URL publik bucket Supabase Storage tanpa rebuild. |
 
 ### FR-6 Manajemen Kategori
 
@@ -148,9 +150,11 @@ tidak ada sama sekali (pesan error identik dengan email tidak terdaftar).
 | --- | --- |
 | FR-6.1 | Admin dapat menambah kategori (nama + slug opsional). |
 | FR-6.2 | Slug kategori unik dengan suffix otomatis bila bentrok. |
-| FR-6.3 | Admin dapat menghapus kategori. |
-| FR-6.4 | Kategori yang masih dipakai produk **menolak dihapus**, baik di UI maupun di Server Action, untuk mencegah penghapusan massal diam-diam. |
-| FR-6.5 | Nama kategori wajib diisi, ≤ 255 karakter. |
+| FR-6.3 | Admin dapat mengubah nama dan slug kategori. |
+| FR-6.4 | Admin dapat mengaktifkan/nonaktifkan kategori. Kategori nonaktif tidak muncul di filter toko maupun dropdown produk baru, tetapi produk yang sudah ada tetap tampil. |
+| FR-6.5 | Admin dapat menghapus kategori yang belum dipakai produk, baik di UI maupun di Server Action. |
+| FR-6.6 | Kategori yang masih dipakai produk **menolak dihapus**, untuk mencegah penghapusan massal diam-diam. |
+| FR-6.7 | Nama kategori wajib diisi, ≤ 255 karakter. |
 
 ### FR-7 Integrasi Storefront
 
@@ -160,6 +164,7 @@ tidak ada sama sekali (pesan error identik dengan email tidak terdaftar).
 | FR-7.2 | Produk baru, perubahan harga, dan status aktif langsung terlihat di storefront. |
 | FR-7.3 | Toko hanya menampilkan produk `is_active = 1`; produk nonaktif menjadi 404 di halaman detailnya. |
 | FR-7.4 | Panel tidak melakukan deploy, restart, atau rebuild pada storefront. |
+| FR-7.5 | Storefront hanya menampilkan kategori `is_active = true`; produk dari kategori nonaktif tetap tampil dengan kategori sebagai teks biasa. |
 
 ### FR-8 Asisten AI Inventori (opsional)
 
@@ -191,7 +196,7 @@ tidak ada sama sekali (pesan error identik dengan email tidak terdaftar).
 | NFR-7 | Performa | Semua halaman admin `force-dynamic` agar data katalog tidak pernah basi. |
 | NFR-8 | Performa | Upload 2 MB tidak ditolak di layer server; `bodySizeLimit` Server Action disetel `"3mb"`. |
 | NFR-9 | Usability | Pesan validasi berbahasa Indonesia dan spesifik menyebut batasannya. |
-| NFR-10 | Kompatibilitas | Satu database, nol migrasi, nol tabel baru — tidak memutus storefront yang berjalan. |
+| NFR-10 | Kompatibilitas | Satu database, satu migrasi aditif (`categories.is_active` + index), tanpa tabel baru — tidak memutus storefront yang berjalan. |
 | NFR-11 | Kualitas | `npm run lint` dan `npx tsc --noEmit` harus bersih. |
 | NFR-12 | Bahasa | Antarmuka dan dokumentasi berbahasa Indonesia; angka & mata uang diformat `id-ID`. |
 
@@ -218,11 +223,15 @@ Login → Produk → klik toggle → is_active berbalik
      → produk hilang dari katalog & listing toko, tetap tersimpan di panel
 ```
 
-**Tambah kategori**
+**Kelola kategori**
 
 ```
 Login → Kategori → isi nama → simpan
-     → kategori baru langsung muncul di dropdown form produk & filter panel
+     → kategori baru muncul di dropdown produk baru & filter panel
+
+Kategori terpakai → Nonaktifkan
+     → hilang dari filter toko & dropdown produk baru
+     → produk lama tetap tampil di toko
 ```
 
 **Pakai Asisten AI (ubah/impor produk)**
@@ -278,16 +287,17 @@ Panel dianggap selesai bila semua butir berikut benar:
 - [x] File 2 MB diterima; > 2 MB ditolak.
 - [x] MIME non-gambar ditolak; 0 byte diabaikan dengan baik.
 - [x] Path traversal dan nama file berbahaya tidak membocorkan file proyek.
-- [x] File lama terhapus dari disk, file yang masih dipakai tetap aman.
+- [x] File lama terhapus dari Supabase Storage; file yang masih dipakai tetap aman.
 
 **Kategori**
-- [x] Tambah dan hapus kategori bekerja; slug unik otomatis.
+- [x] Tambah, ubah, dan hapus kategori bekerja; slug unik otomatis.
+- [x] Toggle aktif/nonaktif bekerja; kategori nonaktif hilang dari toko, produknya tetap tampil.
 - [x] Kategori terpakai menolak dihapus di UI maupun action.
 
 **Integrasi & kualitas**
 - [x] Produk baru, perubahan harga, nonaktif/aktif terlihat di storefront.
 - [x] `npm run build`, `npm run lint`, `npx tsc --noEmit` bersih.
-- [x] `git status` storefront tetap bersih.
+- [x] Perubahan storefront terbatas pada filter kategori; `git status` panel bersih sebelum commit.
 
 ## 10. Risiko & Mitigasi
 
@@ -295,8 +305,9 @@ Panel dianggap selesai bila semua butir berikut benar:
 | --- | --- | --- |
 | Panel ditulis dengan database produksi | Kehilangan data | `proxy.ts` + `assertAdmin()` di setiap action; tidak ada action yang bisa dipanggil tanpa session |
 | Tabrak slug/SKU | Error 500 saat disimpan | Slug unik otomatis, SKU dicek sebelum insert, batas kolom divalidasi |
-| File upload menggantung di disk | Penyimpunan storage | File dihapus saat produk dihapus/gambar diganti, dan hanya bila tidak dipakai produk lain |
-| Upload di `public/` selalu 404 di produksi | Gambar tidak tampil | Upload dipindah ke `uploads/` + route handler, bukan `public/` |
+| Gambar menumpuk di bucket | Biaya penyimpanan | File dihapus saat produk dihapus/gambar diganti, dan hanya bila tidak dipakai produk lain |
+| Bucket privat atau kredensial storage salah | Gambar tidak tampil | Bucket wajib publik; kredensial hanya tersedia di server; error ditampilkan ke admin |
 | Cookie `Secure` memblokir login lokal | Tidak bisa login via `npm start` | `ADMIN_COOKIE_SECURE=false` khusus pengujian lokal |
-| Penghapusan kategori memicu cascade | Produk ikut terhapus massal | Hapus kategori yang masih dipakai ditolak di UI **dan** action |
+| Penghapusan kategori memicu cascade | Produk ikut terhapus massal | Hapus kategori yang masih dipakai ditolak di UI **dan** action; gunakan nonaktifkan |
+| Migrasi belum dijalankan sebelum deploy | Query kategori gagal | Jalankan `categories.is_active` + index lebih dulu; migrasi idempoten |
 | Input membentuk query berbahaya | Kebocoran / manipulasi data | Prepared statement + validasi tipe di layer aplikasi |

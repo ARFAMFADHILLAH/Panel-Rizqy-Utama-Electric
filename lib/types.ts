@@ -2,7 +2,10 @@ export type Category = {
   id: number;
   name: string;
   slug: string;
+  /** boolean di Postgres, 1/0 di MySQL. */
+  is_active?: boolean | number;
   product_count?: number;
+  active_product_count?: number;
 };
 
 export type Product = {

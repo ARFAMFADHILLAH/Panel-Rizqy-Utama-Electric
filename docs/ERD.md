@@ -1,16 +1,18 @@
 # ERD — Rizqy Utama Electric
 
 Basis data `rizqyutamaelectric` dipakai **bersama** oleh storefront (`:3000`)
-dan panel admin (`:3001`). Skema ini sudah ada sebelum panel dibuat dan
-**tidak diubah** oleh panel: tidak ada tabel baru, tidak ada migrasi.
+dan panel admin (`:3001`). Panel menambahkan satu perubahan skema aditif:
+kolom `categories.is_active` + index. Tidak ada tabel baru dan tidak ada
+perubahan yang menghapus data lama.
 
 > **Catatan (versi Supabase).** Storefront dan panel saat ini memakai **Supabase
 > (Postgres)**; skema resminya ada di `rizqyutamaelectric/supabase/schema.sql`
 > (`users`, `categories`, `products` dengan kolom boolean `is_admin`,
-> `featured`, `is_active`, dan `price`/`stock` bertipe `integer`). Diagram &
+> `featured`, `is_active` pada produk dan kategori, serta `price`/`stock`
+> bertipe `integer`). Diagram &
 > DDL di bawah ini adalah versi MySQL asli dan tetap berlaku untuk mode
 > cadangan. Perbedaan praktis bagi panel: `id` adalah `bigint identity`, dan
-> nilain boolean dikirim sebagai `true/false` (bukan `1/0`).
+> nilai boolean dikirim sebagai `true/false` (bukan `1/0`).
 
 Rincian kebutuhan produk ada di [PRD.md](./PRD.md).
 
@@ -36,6 +38,7 @@ erDiagram
         bigint id PK
         varchar name
         varchar slug UK
+        tinyint is_active
         timestamp created_at
         timestamp updated_at
     }
@@ -76,7 +79,7 @@ baris user — tabel ini hanya dibaca untuk memverifikasi login.
 | `id` | `bigint unsigned` | no | auto_increment | PK |
 | `name` | `varchar(255)` | no | — | Nama admin |
 | `email` | `varchar(255)` | no | — | **UNIQUE**, dipakai saat login |
-| `email_verified_at` | `timestamp` | yes | `NULL` | DiReserved untuk kompatibilitas |
+| `email_verified_at` | `timestamp` | yes | `NULL` | Disediakan untuk kompatibilitas |
 | `password` | `varchar(255)` | no | — | Hash bcrypt, bukan teks biasa |
 | `is_admin` | `tinyint(1)` | no | `0` | Hanya `1` yang boleh login ke panel |
 | `remember_token` | `varchar(100)` | yes | `NULL` | Tidak dipakai panel (login pakai cookie session) |
@@ -92,10 +95,12 @@ Index: `PRIMARY KEY (id)`, `UNIQUE KEY users_email_unique (email)`
 | `id` | `bigint unsigned` | no | auto_increment | PK |
 | `name` | `varchar(255)` | no | — | Nama kategori, mis. "MCB & Panel" |
 | `slug` | `varchar(255)` | no | — | **UNIQUE**, dipakai URL filter |
+| `is_active` | `tinyint(1)` | no | `1` | Hanya `1` yang tampil di filter storefront & dropdown produk baru |
 | `created_at` | `timestamp` | yes | `NULL` | Waktu dibuat |
 | `updated_at` | `timestamp` | yes | `NULL` | Waktu diubah |
 
-Index: `PRIMARY KEY (id)`, `UNIQUE KEY categories_slug_unique (slug)`
+Index: `PRIMARY KEY (id)`, `UNIQUE KEY categories_slug_unique (slug)`,
+`KEY categories_is_active_index (is_active)`
 
 ### `products`
 
@@ -107,9 +112,9 @@ Index: `PRIMARY KEY (id)`, `UNIQUE KEY categories_slug_unique (slug)`
 | `slug` | `varchar(255)` | no | — | **UNIQUE**, dipakai URL detail toko |
 | `sku` | `varchar(255)` | yes | `NULL` | **UNIQUE**; beberapa `NULL` diizinkan di MySQL |
 | `description` | `text` | yes | `NULL` | Maks 65.535 byte |
-| `price` | `int unsigned` | no | — | Rupiah penuh, maks `4.294.967.295` |
-| `stock` | `int unsigned` | no | `0` | Maks `4.294.967.295` |
-| `image` | `varchar(255)` | yes | `NULL` | URL absolut dari `ADMIN_PUBLIC_URL`, atau URL eksternal |
+| `price` | `int unsigned` | no | — | Rupiah penuh. MySQL: maks `4.294.967.295`; panel membatasi `2.147.483.647` agar kompatibel dengan Postgres |
+| `stock` | `int unsigned` | no | `0` | MySQL: maks `4.294.967.295`; panel membatasi `2.147.483.647` |
+| `image` | `varchar(255)` | yes | `NULL` | URL publik Supabase Storage, path relatif, atau URL eksternal |
 | `featured` | `tinyint(1)` | no | `0` | Tampilkan di etalase depan |
 | `is_active` | `tinyint(1)` | no | `1` | Hanya `1` yang tampil di storefront |
 | `created_at` | `timestamp` | yes | `NULL` | Waktu dibuat |
@@ -148,10 +153,12 @@ CREATE TABLE `categories` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
   `slug` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
   `created_at` timestamp NULL DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `categories_slug_unique` (`slug`)
+  UNIQUE KEY `categories_slug_unique` (`slug`),
+  KEY `categories_is_active_index` (`is_active`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `products` (
@@ -189,11 +196,12 @@ dijalankan panel agar pengguna mendapat pesan ramah, bukan error 500.
 | `sku` produk unik | MySQL | Dicek sebelum insert/update, ditolak dengan pesan jelas |
 | `name` wajib | MySQL | Divalidasi, pesan "Nama produk wajib diisi." |
 | `price`/`stock` ≥ 0 | `int unsigned` | Divalidasi di aplikasi agar tidak jadi error 500 |
-| `price`/`stock` ≤ `4.294.967.295` | `int unsigned` | Divalidasi di aplikasi (`MAX_UNSIGNED_INT`) |
+| `price`/`stock` ≤ `2.147.483.647` | `integer` (Postgres) / `int unsigned` (MySQL) | Divalidasi di aplikasi (`MAX_INT`) agar aman di kedua mode |
 | Panjang ≤ 255 karakter | `varchar(255)` | Divalidasi di aplikasi (`MAX_VARCHAR`) |
 | Deskripsi ≤ 65.535 byte | `TEXT` | Divalidasi dengan `Buffer.byteLength` |
 | `category_id` ada | FK | Divalidasi lebih dulu, pesan "Kategori tidak ditemukan." |
-| Hapus kategori yang terpakai | `ON DELETE CASCADE` | **Ditolak** di UI dan di Server Action untuk mencegah penghapusan massal diam-diam |
+| Produk baru memakai kategori aktif | Aplikasi | Divalidasi saat create; produk lama boleh tetap di kategori nonaktif |
+| Hapus kategori yang terpakai | `ON DELETE CASCADE` | **Ditolak** di UI dan di Server Action; gunakan nonaktifkan |
 
 ## 5. Konvensi
 
@@ -203,14 +211,14 @@ dijalankan panel agar pengguna mendapat pesan ramah, bukan error 500.
 - **ID:** `bigint unsigned` auto-increment, dimulai dari 1.
 - **Slug:** selalu ASCII lowercase dengan pemisah `-`, maksimal 180 karakter
   (dibatasi di `lib/slugify.ts`).
+- **Storage gambar:** bucket Supabase Storage berada di luar skema database;
+  kolom `products.image` hanya menyimpan URL publik atau path relatif.
 
-## 6. Data Awal
+## 6. Data Produksi
 
-| Tabel | Jumlah | Keterangan |
-| --- | --- | --- |
-| `users` | 1 | akun admin awal (`is_admin = true`); kredensial dibuat sendiri, tidak ada default di repo |
-| `categories` | 6 | Kabel, MCB & Panel, Saklar & Stop Kontak, Lampu & LED, Pipa & Aksesoris, Alat Ukur |
-| `products` | 12 | Seluruhnya `is_active = 1` dan `image = NULL` |
+Database produksi berisi data katalog toko (produk, kategori, dan akun admin).
+Jumlah baris, daftar kategori, dan detail operasional lainnya tidak
+didokumentasikan di sini.
 
 > **Buat/ubah password adminmu sendiri.** Hash baru dibuat dengan
 > bcrypt, bukan teks biasa:

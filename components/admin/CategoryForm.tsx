@@ -1,22 +1,39 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useState } from "react";
 import { slugify } from "@/lib/slugify";
 import type { ActionState } from "@/lib/types";
 import SubmitButton from "@/components/admin/SubmitButton";
 
-type Props = {
-  formAction: (state: ActionState, formData: FormData) => Promise<ActionState>;
+type CategoryValues = {
+  id: number;
+  name: string;
+  slug: string;
 };
 
-export default function CategoryForm({ formAction }: Props) {
+type Props = {
+  formAction: (state: ActionState, formData: FormData) => Promise<ActionState>;
+  category?: CategoryValues;
+  submitText?: string;
+  cancelHref?: string;
+};
+
+export default function CategoryForm({
+  formAction,
+  category,
+  submitText = "Tambah Kategori",
+  cancelHref,
+}: Props) {
   const [state, action] = useActionState<ActionState, FormData>(formAction, {});
-  const [name, setName] = useState("");
-  const [slug, setSlug] = useState("");
-  const [slugTouched, setSlugTouched] = useState(false);
+  const [name, setName] = useState(category?.name ?? "");
+  const [slug, setSlug] = useState(category?.slug ?? "");
+  const [slugTouched, setSlugTouched] = useState(Boolean(category));
 
   return (
     <form action={action} className="space-y-3">
+      {category ? <input type="hidden" name="id" value={category.id} /> : null}
+
       {state.error ? (
         <p
           role="alert"
@@ -75,8 +92,17 @@ export default function CategoryForm({ formAction }: Props) {
         pendingText="Menyimpan…"
         className="w-full rounded-md bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        Tambah Kategori
+        {submitText}
       </SubmitButton>
+
+      {cancelHref ? (
+        <Link
+          href={cancelHref}
+          className="block w-full rounded-md border border-gray-300 px-5 py-2.5 text-center text-sm font-semibold text-gray-600 transition hover:bg-gray-50"
+        >
+          Batal
+        </Link>
+      ) : null}
     </form>
   );
 }

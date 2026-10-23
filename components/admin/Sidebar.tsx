@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
@@ -138,9 +139,18 @@ export default function Sidebar({ user, aiEnabled = false }: Props) {
   return (
     <>
       <div className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-navy-800 bg-navy-900 px-4 py-3 lg:hidden">
-        <p className="text-sm font-extrabold tracking-tight text-white">
-          RIZQY UTAMA <span className="text-brand-500">ADMIN</span>
-        </p>
+        <Link href="/admin" onClick={() => setOpen(false)} className="flex items-center gap-2">
+          <span className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-md bg-white p-0.5">
+            <Image
+              src="/logo/logo-rizqyutama-without-slogan.jpeg"
+              alt="Rizqy Utama Electric"
+              width={64}
+              height={64}
+              className="h-full w-full object-contain"
+            />
+          </span>
+          <span className="text-sm font-extrabold tracking-tight text-white">ADMIN</span>
+        </Link>
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
@@ -174,12 +184,18 @@ export default function Sidebar({ user, aiEnabled = false }: Props) {
 
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col justify-between overflow-y-auto bg-navy-900 px-4 py-5 lg:flex">
         <div>
-          <Link href="/admin" className="mb-7 block px-3 leading-tight">
-            <span className="block text-base font-extrabold tracking-tight text-white">
-              RIZQY UTAMA ELECTRIC
+          <Link href="/admin" className="mb-7 flex items-center gap-3 px-3">
+            <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-lg bg-white p-1">
+              <Image
+                src="/logo/logo-rizqyutama-without-slogan.jpeg"
+                alt="Rizqy Utama Electric"
+                width={88}
+                height={88}
+                className="h-full w-full object-contain"
+              />
             </span>
-            <span className="block text-[11px] font-bold uppercase tracking-widest text-brand-500">
-            Panel Admin
+            <span className="text-[11px] font-bold uppercase leading-tight tracking-widest text-brand-500">
+              Panel Admin
             </span>
           </Link>
           {links}

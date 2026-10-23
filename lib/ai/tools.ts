@@ -217,13 +217,15 @@ export function buildTools() {
     }),
 
     listCategories: tool({
-      description: "Semua kategori beserta id-nya. Dipakai untuk dapat categoryId saat propose*.",
+      description:
+        "Kategori aktif beserta id-nya. Dipakai untuk dapat categoryId saat propose*.",
       inputSchema: z.object({}),
       execute: async () => {
         const rows = await query<{ id: number; name: string; slug: string; product_count: number }[]>(
           `SELECT c.id, c.name, c.slug,
                   (SELECT COUNT(*) FROM products p WHERE p.category_id = c.id) AS product_count
              FROM categories c
+            WHERE c.is_active = TRUE
             ORDER BY c.name ASC`,
         );
         return {
@@ -450,17 +452,17 @@ export function buildTools() {
         | { ok: false; error: string }
       > => {
         const category = await query<{ id: number; name: string }[]>(
-          "SELECT id, name FROM categories WHERE id = ? LIMIT 1",
+          "SELECT id, name FROM categories WHERE id = ? AND is_active = TRUE LIMIT 1",
           [input.categoryId],
         );
         if (!category[0]) {
           const all = await query<{ id: number; name: string }[]>(
-            "SELECT id, name FROM categories ORDER BY name ASC",
+            "SELECT id, name FROM categories WHERE is_active = TRUE ORDER BY name ASC",
           );
           return {
             ok: false,
             error:
-              `Kategori ID ${input.categoryId} tidak ditemukan. Kategori tersedia: `
+              `Kategori aktif ID ${input.categoryId} tidak ditemukan. Kategori tersedia: `
               + all.map((c) => `${c.id}=${c.name}`).join(", "),
           };
         }

@@ -13,7 +13,7 @@ export default async function NewProductPage() {
   await verifySession();
 
   const categories = await query<Category[]>(
-    "SELECT id, name, slug FROM categories ORDER BY name ASC",
+    "SELECT id, name, slug, is_active FROM categories WHERE is_active = TRUE ORDER BY name ASC",
   );
 
   return (

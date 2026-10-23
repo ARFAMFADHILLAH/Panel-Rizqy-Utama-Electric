@@ -118,15 +118,31 @@ export async function categoryExists(id: number): Promise<boolean> {
   return rows.length > 0;
 }
 
+async function activeCategoryExists(id: number): Promise<boolean> {
+  const rows = await query<Category[]>(
+    "SELECT id FROM categories WHERE id = ? AND is_active = TRUE LIMIT 1",
+    [id],
+  );
+  return rows.length > 0;
+}
+
 /**
  * Pemeriksaan sebelum tulis: kategori harus ada dan SKU belum dipakai.
  * `ignoreId` dipakai saat update supaya SKU produk sendiri tidak dianggap bentrok.
+ * Produk baru hanya boleh memakai kategori aktif; produk lama tetap boleh
+ * dipertahankan di kategori yang sudah dinonaktifkan.
  */
 export async function checkProductConflicts(
   data: ProductPayload,
   ignoreId?: number,
 ): Promise<string | null> {
-  if (!(await categoryExists(data.categoryId))) return "Kategori tidak ditemukan.";
+  if (ignoreId === undefined) {
+    if (!(await activeCategoryExists(data.categoryId))) {
+      return "Kategori tidak ditemukan atau sedang nonaktif.";
+    }
+  } else if (!(await categoryExists(data.categoryId))) {
+    return "Kategori tidak ditemukan.";
+  }
   if (data.sku && (await isSkuTaken(data.sku, ignoreId))) {
     return `SKU "${data.sku}" sudah dipakai produk lain.`;
   }

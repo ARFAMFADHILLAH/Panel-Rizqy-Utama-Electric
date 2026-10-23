@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import { query } from "@/lib/db";
 import { verifySession } from "@/lib/auth";
-import { storefrontUrl } from "@/lib/format";
 import type { Category, Product } from "@/lib/types";
 import { updateProductAction } from "@/app/actions/produk";
 import PageHeader from "@/components/admin/PageHeader";
@@ -27,7 +26,7 @@ export default async function EditProductPage({ params }: { params: Params }) {
   if (!product) notFound();
 
   const categories = await query<Category[]>(
-    "SELECT id, name, slug FROM categories ORDER BY name ASC",
+    "SELECT id, name, slug, is_active FROM categories ORDER BY is_active DESC, name ASC",
   );
 
   const values: ProductFormValues = {
@@ -55,14 +54,6 @@ export default async function EditProductPage({ params }: { params: Params }) {
           <span className="font-semibold text-navy-900">Edit</span>
         </p>
 
-        <a
-          href={`${storefrontUrl()}/produk/${product.slug}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-sm font-medium text-brand-600 hover:underline"
-        >
-          Lihat di toko ↗
-        </a>
       </div>
 
       <PageHeader title={product.name} description={`Slug: ${product.slug}`} />

@@ -161,3 +161,41 @@ export async function deleteProductAction(formData: FormData): Promise<void> {
   revalidatePath("/admin");
   revalidatePath("/admin/produk");
 }
+
+export async function bulkDeleteProductAction(formData: FormData): Promise<void> {
+  await assertAdmin();
+
+  const rawIds = formData.getAll("ids");
+  const ids = rawIds
+    .map((value) => toInt(value))
+    .filter((n): n is number => Number.isInteger(n) && n > 0);
+
+  if (ids.length === 0) return;
+
+  const placeholders = ids.map(() => "?").join(", ");
+  const rows = await query<{ image: string | null }[]>(
+    `SELECT image FROM products WHERE id IN (${placeholders})`,
+    ids,
+  );
+
+  const images = [
+    ...new Set(
+      rows.map((row) => row.image).filter((img): img is string => Boolean(img)),
+    ),
+  ];
+
+  await query(`DELETE FROM products WHERE id IN (${placeholders})`, ids);
+
+  for (const image of images) {
+    const stillUsed = await query<{ n: number }[]>(
+      "SELECT COUNT(*) AS n FROM products WHERE image = ? LIMIT 1",
+      [image],
+    );
+    if (!Number(stillUsed[0]?.n ?? 0)) {
+      await deleteUploadedImage(image);
+    }
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/admin/produk");
+}

@@ -8,6 +8,10 @@ export const metadata: Metadata = {
     template: `%s — Panel Admin`,
   },
   robots: { index: false, follow: false },
+  icons: {
+    icon: [{ url: "/logo/circle-logo-rizqyutama.png", type: "image/png" }],
+    apple: [{ url: "/logo/circle-logo-rizqyutama.png" }],
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

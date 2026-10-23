@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { redirect } from "next/navigation";
 import { peekSession } from "@/lib/auth";
 import LoginForm from "@/components/admin/LoginForm";
@@ -18,9 +19,18 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
   return (
     <div className="flex min-h-screen items-center justify-center bg-navy-900 px-4 py-10">
       <div className="w-full max-w-sm">
-        <div className="mb-6 text-center">
-          <p className="text-lg font-extrabold tracking-tight text-white">Rizqy Utama Electric</p>
-          <p className="text-[11px] font-bold uppercase tracking-widest text-brand-400">
+        <div className="mb-6 flex flex-col items-center text-center">
+          <div className="rounded-xl bg-white p-2 shadow-sm">
+            <Image
+              src="/logo/logo-rizqyutama-with-slogan.jpeg"
+              alt="Rizqy Utama Electric"
+              width={128}
+              height={128}
+              priority
+              className="h-28 w-28 object-contain sm:h-32 sm:w-32"
+            />
+          </div>
+          <p className="mt-3 text-[11px] font-bold uppercase tracking-widest text-brand-400">
             Panel Admin
           </p>
         </div>

@@ -18,10 +18,6 @@
 # production
 /build
 
-# uploaded product images (runtime artifacts, served by app/uploads route)
-+/uploads/*
-!/uploads/.gitkeep
-
 # misc
 .DS_Store
 *.pem

@@ -5,6 +5,7 @@ import { useActionState, useState } from "react";
 import { slugify } from "@/lib/slugify";
 import type { ActionState, Category } from "@/lib/types";
 import SubmitButton from "@/components/admin/SubmitButton";
+import DescriptionEditor from "@/components/admin/DescriptionEditor";
 
 export type ProductFormValues = {
   id: number;
@@ -137,23 +138,16 @@ export default function ProductForm({
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.name}
+                  {category.is_active === undefined || Boolean(category.is_active)
+                    ? ""
+                    : " (nonaktif)"}
                 </option>
               ))}
             </select>
           </div>
 
-          <div>
-            <label htmlFor="description" className={labelClass}>
-              Deskripsi
-            </label>
-            <textarea
-              id="description"
-              name="description"
-              rows={4}
-              defaultValue={product?.description ?? ""}
-              className={inputClass}
-              placeholder="Spesifikasi, ukuran, merek…"
-            />
+          <div className="sm:col-span-2">
+            <DescriptionEditor defaultValue={product?.description ?? ""} />
           </div>
         </div>
       </div>

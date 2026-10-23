@@ -1,6 +1,6 @@
 # Panel Admin — Rizqy Utama Electric
 
-Panel administrasi untuk toko online **Rizqy Utama Electric**.Dibangun sebagai
+Panel administrasi untuk toko online **Rizqy Utama Electric**. Dibangun sebagai
 aplikasi Next.js **terpisah** yang memakai **database Supabase (Postgres) yang
 sama** dengan storefront, sehingga admin bisa mengelola katalog lewat web tanpa
 menyentuh SQL dan tanpa risiko merusak toko yang sedang melayani pelanggan.
@@ -8,17 +8,19 @@ menyentuh SQL dan tanpa risiko merusak toko yang sedang melayani pelanggan.
 ```
 rizqyutamaelectric/              panel-rizqyutamaelectric/  ← repo ini
   storefront Next.js :3000          panel admin Next.js :3001
-  (tidak diubah sama sekali)         (read + write)
+  (filter kategori aktif)            (read + write)
             │                                  │
             └────────────► Supabase ◄───────────┘
                  Postgres (satu connection string)
               products · categories · users
 ```
 
-- **Satu database, dua aplikasi** — tidak ada replikasi, tidak ada tabel baru,
-  tidak ada migrasi. Skema ada di `rizqyutamaelectric/supabase/schema.sql`.
-- **Storefront tidak pernah disentuh** — panel hanya membaca dan menulis ke
-  tabel yang sudah ada.
+- **Satu database, dua aplikasi** — tidak ada replikasi dan tidak ada tabel
+  baru. Ada satu perubahan skema aditif: kolom `categories.is_active` + index.
+  Skema resmi ada di `rizqyutamaelectric/supabase/schema.sql`.
+- **Storefront tetap kompatibel** — panel membaca dan menulis ke tabel yang
+  sama. Storefront hanya difilter agar kategori nonaktif tidak muncul; produk
+  yang sudah ada tetap tampil.
 - **Perubahan langsung terlihat** — produk baru, harga baru, atau status
   aktif/nonaktif langsung tampil di toko tanpa deploy.
 - **MySQL tersedia sebagai cadangan** — bila `SUPABASE_DB_URL` dikosongkan,
@@ -39,12 +41,16 @@ rizqyutamaelectric/              panel-rizqyutamaelectric/  ← repo ini
   setiap permintaan.
 - **Dashboard** — jumlah produk, produk aktif, jumlah kategori, produk stok
   habis, plus 8 produk terakhir yang diubah.
-- **Produk** — pencarian (nama/SKU), filter kategori, tambah, ubah, toggle
-  aktif/nonaktif, hapus, dan unggah gambar.
-- **Kategori** — tambah dan hapus. Kategori yang masih dipakai produk
-  menolak dihapus, supaya tidak terjadi penghapusan massal diam-diam.
-- **Gambar** — unggah JPEG/PNG/WEBP/GIF (maks 2 MB) atau pasang URL eksternal.
-  File lama otomatis dibersihkan dari disk saat tidak dipakai lagi.
+- **Produk** — pencarian nama/SKU (tidak membedakan huruf besar/kecil), filter
+  kategori, tambah, ubah, toggle aktif/nonaktif, hapus, dan unggah gambar.
+  Deskripsi mendukung teks tebal/miring, judul bagian, daftar, pratinjau, dan
+  template saran penulisan.
+- **Kategori** — tambah, ubah nama/slug, aktif/nonaktif, dan hapus. Kategori
+  yang masih dipakai produk tidak dapat dihapus dan harus dinonaktifkan;
+  produknya tetap tampil di toko, kategorinya saja yang disembunyikan.
+- **Gambar** — unggah JPEG/PNG/WEBP/GIF (maks 2 MB) ke Supabase Storage
+  (bucket publik) atau pasang URL eksternal. File lama dihapus dari bucket saat
+  tidak dipakai lagi.
 - **Validasi** — pesan berbahasa Indonesia untuk setiap kesalahan input,
   termasuk batas kolom database, jadi tidak ada error 500 dari form.
 - **Asisten AI** *(opsional)* — chat berbahasa Indonesia (Google Gemini) untuk
@@ -58,11 +64,23 @@ rizqyutamaelectric/              panel-rizqyutamaelectric/  ← repo ini
 - Node.js 20+ (dibangun & diuji pada v24)
 - Koneksi **Supabase (Postgres)** — sama dengan storefront, ambil connection
   string-nya dari `.env.local` storefront (`SUPABASE_DB_URL`)
+- Bucket **Supabase Storage** yang bersifat publik untuk gambar produk
+  (default `product-images`)
 - *(opsional)* MySQL 8, hanya bila `SUPABASE_DB_URL` sengaja dikosongkan
 
 Database harus **sudah bisa dihubungi** saat panel dijalankan; panel tidak
 menyalakan database-nya sendiri. Skema database dibuat sekali dari
 `rizqyutamaelectric/supabase/schema.sql` (Supabase Dashboard → SQL Editor).
+
+Untuk database lama, jalankan migrasi aditif berikut sekali:
+
+```sql
+alter table categories add column if not exists is_active boolean not null default true;
+create index if not exists idx_categories_is_active on categories (is_active);
+```
+
+Untuk mode cadangan MySQL:
+`ALTER TABLE categories ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1;`
 
 ## Menjalankan
 
@@ -89,6 +107,23 @@ npm start                      # http://localhost:3001
 | `npm run lint` | ESLint |
 | `npx tsc --noEmit` | Cek tipe TypeScript |
 
+## Deploy
+
+Panel dapat dijalankan di Vercel. Karena filesystem serverless bersifat
+read-only dan tidak persisten, gambar **wajib** memakai Supabase Storage.
+
+1. Buat bucket publik di Supabase Dashboard → Storage (default
+   `product-images`, atau sesuaikan `SUPABASE_STORAGE_BUCKET`).
+2. Pastikan migrasi `categories.is_active` sudah dijalankan (lihat bagian
+   Kebutuhan Sistem).
+3. Isi environment variables di dashboard hosting. Minimal `SUPABASE_DB_URL`,
+   `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SESSION_SECRET`, dan
+   `NEXT_PUBLIC_STOREFRONT_URL`.
+4. Deploy. Jangan set `ADMIN_COOKIE_SECURE=false` di produksi.
+
+Kredensial `SUPABASE_SERVICE_ROLE_KEY` hanya boleh tersedia di server; jangan
+pernah memasukkannya ke kode client atau repositori.
+
 ## Konfigurasi
 
 Salin `.env.example` menjadi `.env.local`, lalu isi:
@@ -98,7 +133,9 @@ Salin `.env.example` menjadi `.env.local`, lalu isi:
 | `SUPABASE_DB_URL` | **ya** | Connection string Postgres Supabase (mode Session/Pooler). Selama terisi, panel memakai Supabase — sama dengan storefront. |
 | `MYSQL_HOST` / `MYSQL_PORT` / `MYSQL_USER` / `MYSQL_PASSWORD` / `MYSQL_DATABASE` | tidak | **Cadangan.** Dipakai hanya bila `SUPABASE_DB_URL` kosong. `MYSQL_DATABASE` harus `rizqyutamaelectric`. |
 | `SESSION_SECRET` | **wajib** | Kunci HMAC penandatangan cookie. Generate: `openssl rand -base64 32`. **Jangan dipakai ulang antar instalasi.** |
-| `ADMIN_PUBLIC_URL` | ya | Origin publik panel, mis. `https://admin.tokomu.com`. Dipakai menyusun URL gambar. |
+| `SUPABASE_URL` | ya* | URL project Supabase, dipakai untuk upload gambar. |
+| `SUPABASE_SERVICE_ROLE_KEY` | ya* | Service role key untuk Supabase Storage. **Hanya server**, jangan pernah ke client. |
+| `SUPABASE_STORAGE_BUCKET` | tidak | Nama bucket publik untuk gambar, default `product-images`. |
 | `NEXT_PUBLIC_STOREFRONT_URL` | ya | Origin toko, untuk tombol "Lihat Toko". |
 | `NEXT_PUBLIC_STORE_NAME` | tidak | Nama toko yang ditampilkan. |
 | `NEXT_PUBLIC_WA_NUMBER` | tidak | Nomor WhatsApp toko. |
@@ -112,8 +149,8 @@ Salin `.env.example` menjadi `.env.local`, lalu isi:
 | `LOW_STOCK_THRESHOLD` | tidak | Ambang stok menipis, default `5`. |
 | `CRON_SECRET` | tidak | Bearer token untuk `/api/cron/daily-report`. |
 
-> `ADMIN_PUBLIC_URL` harus sama dengan origin yang dipakai membuka panel,
-> karena URL gambar disimpan apa adanya di kolom `products.image`.
+> \* `SUPABASE_URL` dan `SUPABASE_SERVICE_ROLE_KEY` wajib bila admin mengunggah
+> gambar. Bucket storage harus publik agar URL-nya bisa dirender storefront.
 >
 > Cookie session memakai flag `Secure` otomatis saat `NODE_ENV=production`.
 > Browser tidak mengirim cookie `Secure` lewat HTTP, jadi `npm start` di
@@ -142,7 +179,6 @@ app/
   admin/(panel)/      Layout + dashboard, produk, kategori, ai
   api/ai/chat/        Endpoint streaming chat Asisten AI
   api/cron/           Pemicu laporan harian
-  uploads/[...path]/  Route handler penyaji file gambar
   robots.ts           Melarang perayapan seluruh panel
 components/admin/     Sidebar, form produk/kategori, tombol, header
 components/admin/ai/  Chat Asisten AI + kartu proposal konfirmasi
@@ -156,19 +192,18 @@ lib/
   session.ts          Pembuatan/pembacaan cookie session
   session-token.ts    Tanda tangan HMAC + validasi kedaluwarsa
   slug.ts, slugify.ts Slug unik & normalisasi
-  upload.ts           Simpan, baca, hapus file gambar
+  upload.ts           Simpan & hapus gambar di Supabase Storage
   format.ts, types.ts Format Rupiah/tanggal & tipe data
 proxy.ts              Saringan awal untuk /admin/*
-uploads/              File gambar hasil unggahan (bukan public/)
 docs/                 PRD, ERD
 ```
 
-### Kenapa upload tidak memakai `public/`
+### Kenapa upload memakai Supabase Storage
 
-Next.js memotret isi folder `public/` saat build. File yang diunggah **setelah**
-build tidak akan dilayani oleh `next start` dan selalu 404. Karena itu upload
-disimpan di `uploads/` dan dilayani route handler `/uploads/[...path]`, sehingga
-gambar langsung bisa diakses tanpa rebuild.
+Panel dapat berjalan di serverless (mis. Vercel) yang filesystem-nya read-only
+dan tidak persisten. Karena itu gambar disimpan di bucket Supabase Storage dan
+kolom `products.image` menyimpan URL publiknya, sehingga gambar bisa diakses
+tanpa rebuild.
 
 ## Keamanan
 
@@ -180,8 +215,8 @@ gambar langsung bisa diakses tanpa rebuild.
 - Seluruh query memakai prepared statement — `pg` (Supabase) atau `mysql2`
   (cadangan), tidak pernah string SQL gabungan.
 - Tanda tangan cookie diverifikasi dengan `timingSafeEqual`.
-- Path traversal dicegah; nama file selalu dibuat server, bukan diambil dari
-  browser.
+- Nama file gambar selalu dibuat server; URL storage divalidasi agar tidak
+  menunjuk objek di luar bucket.
 - Halaman panel `noindex`, dan `/robots.txt` melarang perayapan.
 - Query parameter `?next=` hanya diterima bila diawali `/admin`, mencegah
   open-redirect.
@@ -195,6 +230,7 @@ gambar langsung bisa diakses tanpa rebuild.
 | TypeScript | 5 |
 | Tailwind CSS | 4 |
 | pg | ^8.23.1 |
+| @supabase/supabase-js | ^2.117.3 (Supabase Storage) |
 | mysql2 | ^3.24.4 (cadangan) |
 | bcryptjs | ^3.0.2 |
 | ai / @ai-sdk/google | ^7 / ^4 (Asisten AI, opsional) |

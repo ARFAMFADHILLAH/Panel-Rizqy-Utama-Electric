@@ -4,6 +4,7 @@ import { formatRp } from "@/lib/format";
 import { verifySession } from "@/lib/auth";
 import type { Category, Product } from "@/lib/types";
 import { deleteProductAction, toggleProductAction } from "@/app/actions/produk";
+import ProductBulkActions from "@/components/admin/ProductBulkActions";
 import PageHeader from "@/components/admin/PageHeader";
 import ConfirmSubmit from "@/components/admin/ConfirmSubmit";
 
@@ -11,14 +12,16 @@ export const dynamic = "force-dynamic";
 
 export const metadata = { title: "Produk" };
 
-type SearchParams = Promise<{ q?: string; kategori?: string }>;
+const PAGE_SIZE = 20;
+
+type SearchParams = Promise<{ q?: string; kategori?: string; page?: string }>;
 
 export default async function ProductListPage({ searchParams }: { searchParams: SearchParams }) {
   await verifySession();
-  const { q, kategori } = await searchParams;
+  const { q, kategori, page } = await searchParams;
 
   const categories = await query<Category[]>(
-    "SELECT id, name, slug FROM categories ORDER BY name ASC",
+    "SELECT id, name, slug, is_active FROM categories ORDER BY is_active DESC, name ASC",
   );
 
   const where: string[] = ["1 = 1"];
@@ -33,22 +36,74 @@ export default async function ProductListPage({ searchParams }: { searchParams: 
     params.push(kategori);
   }
 
+  const countRows = await query<{ total: number }[]>(
+    `SELECT COUNT(*) AS total
+       FROM products p
+       JOIN categories c ON c.id = p.category_id
+      WHERE ${where.join(" AND ")}`,
+    params,
+  );
+
+  const total = Number(countRows[0]?.total ?? 0);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const requestedPage = Number.parseInt(page ?? "1", 10);
+  const currentPage = Number.isInteger(requestedPage)
+    ? Math.min(Math.max(requestedPage, 1), totalPages)
+    : 1;
+  const offset = (currentPage - 1) * PAGE_SIZE;
+
   const products = await query<Product[]>(
     `SELECT p.*, c.name AS category_name, c.slug AS category_slug
        FROM products p
        JOIN categories c ON c.id = p.category_id
       WHERE ${where.join(" AND ")}
-      ORDER BY p.updated_at DESC, p.id DESC`,
-    params,
+      ORDER BY p.updated_at DESC, p.id DESC
+      LIMIT ? OFFSET ?`,
+    [...params, PAGE_SIZE, offset],
   );
 
   const activeCategory = categories.find((c) => c.slug === kategori);
+  const firstItem = total === 0 ? 0 : offset + 1;
+  const lastItem = Math.min(offset + PAGE_SIZE, total);
+
+  const pageHref = (targetPage: number) => {
+    const search = new URLSearchParams();
+    if (q) search.set("q", q);
+    if (kategori) search.set("kategori", kategori);
+    if (targetPage > 1) search.set("page", String(targetPage));
+    const queryString = search.toString();
+    return `/admin/produk${queryString ? `?${queryString}` : ""}`;
+  };
+
+  const pageNumbers: (number | "ellipsis")[] = [];
+  if (totalPages <= 7) {
+    for (let index = 1; index <= totalPages; index += 1) pageNumbers.push(index);
+  } else {
+    const windowStart = Math.max(1, Math.min(currentPage - 2, totalPages - 4));
+    const windowEnd = Math.min(totalPages, windowStart + 4);
+
+    if (windowStart > 1) {
+      pageNumbers.push(1);
+      if (windowStart > 2) pageNumbers.push("ellipsis");
+    }
+
+    for (let index = windowStart; index <= windowEnd; index += 1) {
+      pageNumbers.push(index);
+    }
+
+    if (windowEnd < totalPages) {
+      if (windowEnd < totalPages - 1) pageNumbers.push("ellipsis");
+      pageNumbers.push(totalPages);
+    }
+  }
+
+  const productIdsOnPage = products.map((product) => product.id);
 
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <PageHeader
         title="Produk"
-        description={`${products.length} produk${activeCategory ? ` di ${activeCategory.name}` : ""}.`}
+        description={`${total} produk${activeCategory ? ` di ${activeCategory.name}` : ""}.`}
         action={
           <Link
             href="/admin/produk/baru"
@@ -88,6 +143,7 @@ export default async function ProductListPage({ searchParams }: { searchParams: 
             {categories.map((category) => (
               <option key={category.id} value={category.slug}>
                 {category.name}
+                {Boolean(category.is_active) ? "" : " (nonaktif)"}
               </option>
             ))}
           </select>
@@ -110,7 +166,9 @@ export default async function ProductListPage({ searchParams }: { searchParams: 
         ) : null}
       </form>
 
-      {products.length === 0 ? (
+      <ProductBulkActions productIds={productIdsOnPage} />
+
+      {total === 0 ? (
         <div className="rounded-md border border-dashed border-gray-300 bg-white py-20 text-center">
           <p className="font-semibold text-navy-900">Produk tidak ditemukan</p>
           <p className="mt-1 text-sm text-gray-500">
@@ -123,6 +181,7 @@ export default async function ProductListPage({ searchParams }: { searchParams: 
             <table className="w-full min-w-[860px] text-left text-sm">
               <thead className="border-b border-gray-200 bg-navy-50 text-xs uppercase tracking-wide text-gray-500">
                 <tr>
+                  <th className="w-10 px-3 py-3 font-semibold"></th>
                   <th className="px-4 py-3 font-semibold">Produk</th>
                   <th className="px-4 py-3 font-semibold">Kategori</th>
                   <th className="px-4 py-3 text-right font-semibold">Harga</th>
@@ -134,6 +193,16 @@ export default async function ProductListPage({ searchParams }: { searchParams: 
               <tbody className="divide-y divide-gray-100">
                 {products.map((product) => (
                   <tr key={product.id} className="align-middle hover:bg-gray-50">
+                    <td className="px-3 py-3">
+                      <input
+                        type="checkbox"
+                        form="bulk-delete-form"
+                        name="ids"
+                        value={product.id}
+                        className="h-4 w-4 rounded border-gray-300"
+                        aria-label={`Pilih ${product.name}`}
+                      />
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <div className="h-11 w-11 shrink-0 overflow-hidden rounded-md border border-gray-200 bg-gray-50">
@@ -235,6 +304,116 @@ export default async function ProductListPage({ searchParams }: { searchParams: 
           </div>
         </div>
       )}
+
+      {totalPages > 1 ? (
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-gray-500">
+            Menampilkan{" "}
+            <span className="font-semibold text-navy-900">{firstItem}</span>–
+            <span className="font-semibold text-navy-900">{lastItem}</span> dari{" "}
+            <span className="font-semibold text-navy-900">{total}</span> produk
+          </p>
+
+          <div className="flex items-center justify-between gap-2 sm:hidden">
+            {currentPage > 1 ? (
+              <Link
+                href={pageHref(currentPage - 1)}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold text-navy-800 transition hover:bg-navy-50"
+              >
+                Sebelumnya
+              </Link>
+            ) : (
+              <span
+                aria-disabled="true"
+                className="rounded-md border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-300"
+              >
+                Sebelumnya
+              </span>
+            )}
+
+            <span className="text-xs font-semibold text-gray-600">
+              Halaman {currentPage} / {totalPages}
+            </span>
+
+            {currentPage < totalPages ? (
+              <Link
+                href={pageHref(currentPage + 1)}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold text-navy-800 transition hover:bg-navy-50"
+              >
+                Berikutnya
+              </Link>
+            ) : (
+              <span
+                aria-disabled="true"
+                className="rounded-md border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-300"
+              >
+                Berikutnya
+              </span>
+            )}
+          </div>
+
+          <nav
+            aria-label="Pagination produk"
+            className="hidden flex-wrap items-center gap-1 sm:flex"
+          >
+            {currentPage > 1 ? (
+              <Link
+                href={pageHref(currentPage - 1)}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold text-navy-800 transition hover:bg-navy-50"
+              >
+                Sebelumnya
+              </Link>
+            ) : (
+              <span
+                aria-disabled="true"
+                className="rounded-md border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-300"
+              >
+                Sebelumnya
+              </span>
+            )}
+
+            {pageNumbers.map((item, index) =>
+              item === "ellipsis" ? (
+                <span key={`ellipsis-${index}`} className="px-1 text-sm text-gray-400">
+                  …
+                </span>
+              ) : item === currentPage ? (
+                <span
+                  key={item}
+                  aria-current="page"
+                  className="rounded-md border border-brand-500 bg-brand-500 px-3 py-1.5 text-xs font-semibold text-white"
+                >
+                  {item}
+                </span>
+              ) : (
+                <Link
+                  key={item}
+                  href={pageHref(item)}
+                  className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold text-navy-800 transition hover:bg-navy-50"
+                >
+                  {item}
+                </Link>
+              ),
+            )}
+
+            {currentPage < totalPages ? (
+              <Link
+                href={pageHref(currentPage + 1)}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold text-navy-800 transition hover:bg-navy-50"
+              >
+                Berikutnya
+              </Link>
+            ) : (
+              <span
+                aria-disabled="true"
+                className="rounded-md border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-300"
+              >
+                Berikutnya
+              </span>
+            )}
+          </nav>
+        </div>
+      ) : null}
     </div>
   );
 }
